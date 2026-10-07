@@ -5,16 +5,19 @@
 CLI:  python contract_checker.py договор.pdf [-o report.html] [--provider rules|ollama|anthropic]
 Telegram-бот: python telegram_bot.py
 """
-import argparse, html, json, os, re, sys
+import argparse, html, json, logging, os, re, sys
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 HERE = Path(__file__).parent
+LOGGER = logging.getLogger(__name__)
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-5-5")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:4b")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
+EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 LEVELS = {"none": 0, "low": 1, "medium": 2, "high": 3}
 RU = {"none": "нет риска", "low": "низкий", "medium": "средний", "high": "высокий"}
 DISCLAIMER = ("Отчёт создан автоматически и не является юридической консультацией. "
@@ -66,7 +69,7 @@ def load_patterns():
 def get_embedder():
     try:
         from sentence_transformers import SentenceTransformer
-        return SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+        return SentenceTransformer(EMBEDDING_MODEL)
     except Exception:
         print("sentence-transformers не найден: используются только ключевые слова.", file=sys.stderr)
         return None
@@ -108,11 +111,26 @@ SYSTEM = ("Ты помощник по проверке договоров. Дл�
           "Пиши по-русски. Не давай юридических заключений и не пиши, что договор можно подписывать.")
 
 def parse_llm_response(raw):
-    raw = re.sub(r"^```(?:json)?|```$", "", raw.strip(), flags=re.M).strip()
+    print(f"\n--- [DEBUG] Сырой ответ от LLM ---\n{raw}\n----------------------------------\n", file=sys.stderr)
+    LOGGER.info("Сырой ответ от LLM (первые 200 символов): %s", raw[:200])
+
+    # Очищаем markdown-блоки
+    raw_cleaned = re.sub(r"^```(?:json)?|```$", "", raw.strip(), flags=re.M).strip()
+    
+    # Пытаемся найти массив [...] или одиночный объект {...}
+    match = re.search(r"(\[.*\]|\{.*\})", raw_cleaned, re.DOTALL)
+    if match:
+        raw_cleaned = match.group(0)
+
     try:
-        parsed = json.loads(raw)
+        parsed = json.loads(raw_cleaned)
     except json.JSONDecodeError as exc:
-        raise ValueError("Модель вернула ответ не в формате JSON.") from exc
+        raise ValueError(f"Модель вернула ответ не в формате JSON. Сырой ответ: {raw[:300]}") from exc
+
+    # Если модель вернула один объект вместо массива — заворачиваем его в список
+    if isinstance(parsed, dict):
+        parsed = [parsed]
+
     if not isinstance(parsed, list):
         raise ValueError("Ответ модели должен быть JSON-массивом.")
 
@@ -154,21 +172,8 @@ def analyze_anthropic(items, batch=10):
         results.update(chunk_results)
     return results
 
-def analyze_ollama(items, batch=10):
+def analyze_ollama(items, batch=1):
     results = {}
-    schema = {
-        "type": "array",
-        "items": {
-            "type": "object",
-            "properties": {
-                "id": {"type": "integer"},
-                "risk": {"type": "string", "enum": ["none", "low", "medium", "high"]},
-                "issue": {"type": "string"},
-                "recommendation": {"type": "string"},
-            },
-            "required": ["id", "risk", "issue", "recommendation"],
-        },
-    }
     for i in range(0, len(items), batch):
         chunk = items[i:i + batch]
         prompt = "Проанализируй пункты договора:\n" + json.dumps(
@@ -177,7 +182,7 @@ def analyze_ollama(items, batch=10):
         payload = json.dumps({
             "model": OLLAMA_MODEL,
             "stream": False,
-            "format": schema,
+            "format": "json",
             "keep_alive": "5m",
             "messages": [
                 {"role": "system", "content": SYSTEM},
@@ -190,6 +195,12 @@ def analyze_ollama(items, batch=10):
             data=payload,
             headers={"Content-Type": "application/json"},
             method="POST",
+        )
+        LOGGER.info(
+            "Отправляю запрос в Ollama: модель %s, пакет %d из %d",
+            OLLAMA_MODEL,
+            i // batch + 1,
+            (len(items) + batch - 1) // batch,
         )
         try:
             with urlopen(request, timeout=600) as response:
@@ -230,23 +241,29 @@ def analyze_document(file_path, provider="rules", top=25):
         raise ValueError("Параметр top должен быть не меньше 1.")
     if provider not in {"rules", "ollama", "anthropic"}:
         raise ValueError(f"Неизвестный LLM-провайдер: {provider}")
+    LOGGER.info("Начинаю анализ документа; запрошенный провайдер: %s", provider)
 
     text = load_text(file_path)
     clauses = split_clauses(text)
     if not clauses:
         raise ValueError("Не удалось выделить пункты договора.")
 
-    items = select_clauses(clauses, load_patterns(), cached_embedder())[:top]
-    if provider == "ollama":
+    embedder = cached_embedder()
+    items = select_clauses(clauses, load_patterns(), embedder)[:top]
+    if not items:
+        analysis = {}
+        provider_name = "LLM не вызывалась: фрагменты не отобраны"
+    elif provider == "ollama":
         analysis = analyze_ollama(items)
-        mode = f"Ollama ({OLLAMA_MODEL}) + поиск по базе паттернов"
+        provider_name = "Ollama"
     elif provider == "anthropic":
         analysis = analyze_anthropic(items)
-        mode = f"Claude ({CLAUDE_MODEL}) + поиск по базе паттернов"
+        provider_name = "Anthropic"
     else:
         analysis = analyze_rules(items)
-        mode = "правила и ключевые слова, без LLM"
+        provider_name = "Встроенные правила (без LLM)"
 
+    LOGGER.info("Провайдер, фактически использованный для анализа: %s", provider_name)
     level, score, highs = aggregate(items, analysis)
     return {
         "total": len(clauses),
@@ -255,7 +272,10 @@ def analyze_document(file_path, provider="rules", top=25):
         "level": level,
         "score": score,
         "highs": highs,
-        "mode": mode,
+        "mode": provider_name,
+        "report_metadata": {
+            "provider": provider_name,
+        },
     }
 
 # ---------- Aggregation ----------
@@ -270,31 +290,75 @@ def aggregate(items, analysis):
     return level, score, highs
 
 # ---------- Output: HTML-отчёт ----------
-def build_report(name, total, items, analysis, level, score, mode):
+def build_report(name, total, items, analysis, level, score, mode, metadata=None):
     colors = {"high": "#b3261e", "medium": "#b26a00", "low": "#2e7d32", "none": "#5d6b7a"}
+    metadata = metadata or {"provider": mode}
+    analyzed_ids = {item["id"] for item in items if item["id"] in analysis}
+    assessed_count = len(analyzed_ids)
+    findings_count = sum(
+        analysis[item_id].get("risk") in {"low", "medium", "high"}
+        for item_id in analyzed_ids
+    )
+    not_assessed_count = max(0, total - assessed_count)
     rows = []
-    for x in sorted(items, key=lambda x: -LEVELS.get(analysis.get(x["id"], {}).get("risk", "none"), 0)):
-        a = analysis.get(x["id"], {}); r = a.get("risk", "none")
-        if r == "none": continue
-        rows.append(f'<div class="it" style="border-left-color:{colors[r]}"><h3>Пункт {x["id"]}: '
-                    f'{html.escape(", ".join(x["categories"]))} — риск {RU[r]}</h3>'
-                    f'<p class="q">{html.escape(x["text"])}</p>'
-                    f'<p><b>Проблема:</b> {html.escape(a.get("issue", ""))}</p>'
-                    f'<p><b>Что сделать:</b> {html.escape(a.get("recommendation", ""))}</p></div>')
+    for x in items:
+        a = analysis.get(x["id"], {})
+        risk = a.get("risk")
+        if risk in {"low", "medium", "high"}:
+            status = f"Выявлен риск: {RU[risk]}"
+            color = colors[risk]
+        elif risk == "none":
+            status = "Риск не выявлен"
+            color = colors["none"]
+        else:
+            status = "Не оценён"
+            color = colors["none"]
+        details = ""
+        if a.get("issue"):
+            details += f'<p><b>Комментарий:</b> {html.escape(str(a["issue"]), quote=True)}</p>'
+        if a.get("recommendation"):
+            details += f'<p><b>Рекомендация:</b> {html.escape(str(a["recommendation"]), quote=True)}</p>'
+        rows.append(
+            f'<article class="it" style="border-left-color:{color}"><h3>Фрагмент №{x["id"]}: '
+            f'{html.escape(", ".join(x["categories"]), quote=True)} — {status}</h3>'
+            f'<p class="q">{html.escape(x["text"], quote=True)}</p>{details}</article>'
+        )
     verdict = {"high": "Высокий риск. Обязательно покажите договор юристу до подписания.",
                "medium": "Средний риск. Рекомендуется проверка юристом.",
                "low": "Низкий риск, но отмеченные пункты стоит уточнить.",
                "none": "Явных красных флагов не найдено. Это не гарантия безопасности."}[level]
+    escaped_name = html.escape(name, quote=True)
+    provider = html.escape(str(metadata.get("provider", mode)), quote=True)
+    generated_at = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    findings_section = "".join(rows) or (
+        '<p class="empty">Фрагменты для рассмотрения не отобраны. '
+        'Это не означает, что в документе отсутствуют риски.</p>'
+    )
     return f"""<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>Отчёт: {html.escape(name)}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>body{{font:16px/1.5 Georgia,serif;max-width:800px;margin:24px auto;padding:0 16px;color:#1c2530}}
-.sum{{border:1px solid #d5dce3;border-radius:6px;padding:14px 18px;margin-bottom:18px}}
+section{{margin:18px 0}}.sum{{border:1px solid #d5dce3;border-radius:6px;padding:14px 18px}}
 .it{{border:1px solid #d5dce3;border-left:5px solid;border-radius:6px;padding:4px 16px;margin-bottom:12px}}
 .it h3{{font:700 1rem system-ui,sans-serif;margin:10px 0 4px}}.q{{color:#5d6b7a;font-style:italic}}
-.w{{background:#fff4e0;border-left:4px solid #b26a00;padding:8px 12px;font-size:.9rem}}</style></head><body>
-<h1>Отчёт по договору: {html.escape(name)}</h1><p class="w">{DISCLAIMER}</p>
-<div class="sum"><h2 style="color:{colors[level]};margin-top:0">{verdict}</h2>
-<p>Пунктов в документе: {total}. Отобрано для анализа: {len(items)}. Баллы риска: {score}.<br>
-Режим анализа: {mode}.</p></div>{"".join(rows) or "<p>Рискованных пунктов не выявлено.</p>"}
+.w{{background:#fff4e0;border-left:4px solid #b26a00;padding:8px 12px;font-size:.9rem}}
+.empty{{background:#f2f5f8;padding:12px;border-radius:5px}}dt{{font-weight:bold;margin-top:8px}}
+dd{{margin-left:0}}footer{{font-size:.85rem;color:#5d6b7a;margin-top:24px}}</style></head><body>
+<h1>Отчёт по договору: {escaped_name}</h1>
+<aside id="disclaimer" class="w">{DISCLAIMER}</aside>
+<section id="summary" aria-labelledby="summary-title"><div class="sum">
+<h2 id="summary-title" style="color:{colors[level]};margin-top:0">Итог проверки: {verdict}</h2>
+<dl><dt>Фрагментов выделено эвристическим разбиением</dt><dd>{total}</dd>
+<dt>Фрагментов отобрано для анализа</dt><dd>{len(items)}</dd>
+<dt>Фрагментов фактически оценено</dt><dd>{assessed_count}</dd>
+<dt>Фрагментов не оценено</dt><dd>{not_assessed_count}</dd>
+<dt>Фрагментов с риском</dt><dd>{findings_count}</dd>
+<dt>Сторона, чьи риски оцениваются</dt><dd>Сторона, которая собирается подписать договор; автоматически не определяется.</dd></dl>
+</div></section>
+<section id="provider" aria-labelledby="provider-title"><h2 id="provider-title">Провайдер анализа</h2>
+<p>{provider}</p></section>
+<section id="findings" aria-labelledby="findings-title"><h2 id="findings-title">Фрагменты, попавшие на рассмотрение</h2>
+{findings_section}</section>
+<footer>Отчёт сформирован: {html.escape(generated_at, quote=True)}</footer>
 </body></html>"""
 
 def main():
@@ -308,11 +372,16 @@ def main():
     a = ap.parse_args()
 
     provider = "rules" if a.no_llm else a.provider
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    LOGGER.info("Запуск проверки договоров; настроенный провайдер: %s", provider)
     try:
         result = analyze_document(a.file, provider=provider, top=a.top)
         Path(a.output).write_text(
             build_report(Path(a.file).name, result["total"], result["items"], result["analysis"],
-                         result["level"], result["score"], result["mode"]),
+                         result["level"], result["score"], result["mode"], result["report_metadata"]),
             encoding="utf-8",
         )
     except (OSError, RuntimeError, ValueError) as exc:

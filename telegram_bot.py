@@ -54,12 +54,22 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_message = await message.reply_text("Документ получен, выполняю анализ…")
 
         provider = os.getenv("LLM_PROVIDER", "rules").lower()
+        LOGGER.info(
+            "Обработка документа %s; настроенный провайдер: %s",
+            original_name,
+            provider,
+        )
         result = await asyncio.to_thread(
             analyze_document, input_path, provider=provider, top=TOP_CLAUSES
         )
+        LOGGER.info(
+            "Документ %s обработан; фактически использованный провайдер: %s",
+            original_name,
+            result["mode"],
+        )
         html_report = build_report(
             original_name, result["total"], result["items"], result["analysis"],
-            result["level"], result["score"], result["mode"],
+            result["level"], result["score"], result["mode"], result["report_metadata"],
         )
         with tempfile.NamedTemporaryFile(
             mode="w", encoding="utf-8", suffix=".html", delete=False
@@ -116,7 +126,11 @@ def main():
     application.add_handler(
         MessageHandler(private_chat & filters.Document.ALL, handle_document)
     )
-    LOGGER.info("Starting public contract checker bot (private chats only)")
+    provider = os.getenv("LLM_PROVIDER", "rules").lower()
+    LOGGER.info(
+        "Starting public contract checker bot (private chats only); configured provider: %s",
+        provider,
+    )
     application.run_polling()
 
 
