@@ -1,0 +1,7 @@
+anthropic
+numpy
+pdf2image
+pdfplumber
+pytesseract
+python-docx
+sentence-transformers
