@@ -54,14 +54,14 @@ ollama --version
 Загрузите рекомендуемую стартовую модель (скачивание может занять несколько гигабайт):
 
 ```cmd
-ollama pull qwen3:4b
+ollama pull qwen2.5:7b
 ```
 
-Убедитесь, что модель появилась в списке. Если модель ещё не скачана, загрузите её командой `ollama pull qwen3:4b`:
+Убедитесь, что модель появилась в списке. Если модель ещё не скачана, загрузите её командой `ollama pull qwen2.5:7b`:
 
 ```cmd
 ollama list
-ollama run qwen3:4b
+ollama run qwen2.5:7b
 ```
 
 Введите короткий вопрос в интерактивном приглашении Ollama, затем выйдите командой `/bye`. Оставьте Ollama запущенной. Если команда `ollama` не распознана, завершите и снова откройте терминал после установки Ollama; при необходимости перезагрузите Windows.
@@ -79,7 +79,7 @@ ollama run qwen3:4b
 .venv\Scripts\activate
 set TELEGRAM_BOT_TOKEN=полученный_токен
 set LLM_PROVIDER=ollama
-set OLLAMA_MODEL=qwen3:4b
+set OLLAMA_MODEL=qwen2.5:7b
 python telegram_bot.py
 ```
 
