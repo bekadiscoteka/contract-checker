@@ -1,2 +1,8 @@
 .venv/
 report.html
+__pycache__/
+*.py[cod]
+*.docx
+*.pdf
+.vimtmp
+

@@ -2,14 +2,19 @@
 """Сканер договоров: ищет рискованные пункты и строит отчёт.
 Не является юридической консультацией.
 
-Запуск:  python contract_checker.py договор.pdf [-o report.html] [--top 25]
-Нужен ANTHROPIC_API_KEY. Без ключа работает режим правил (без LLM).
+CLI:  python contract_checker.py договор.pdf [-o report.html] [--provider rules|ollama|anthropic]
+Telegram-бот: python telegram_bot.py
 """
 import argparse, html, json, os, re, sys
+from functools import lru_cache
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 HERE = Path(__file__).parent
-MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-5-5")
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-5-5")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:4b")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
 LEVELS = {"none": 0, "low": 1, "medium": 2, "high": 3}
 RU = {"none": "нет риска", "low": "низкий", "medium": "средний", "high": "высокий"}
 DISCLAIMER = ("Отчёт создан автоматически и не является юридической консультацией. "
@@ -30,7 +35,10 @@ def load_text(path):
                 text = "\n".join(pytesseract.image_to_string(im, lang="rus+eng")
                                  for im in convert_from_path(str(p)))
             except Exception as e:
-                sys.exit(f"Похоже, это скан, а OCR недоступен ({e}). Установите pytesseract и pdf2image.")
+                raise RuntimeError(
+                    f"Похоже, это скан, а OCR недоступен ({e}). "
+                    "Установите Tesseract и Poppler, а также pytesseract и pdf2image."
+                ) from e
         return text
     if ext == ".docx":
         import docx
@@ -45,7 +53,7 @@ def load_text(path):
 def split_clauses(text):
     text = re.sub(r"[ \t]+", " ", text)
     parts = re.split(r"\n(?=\s*\d+(?:\.\d+)*[.)]?\s)", text)
-    if len(parts) < 3:
+    if len(parts) < 2:
         parts = re.split(r"\n\s*\n", text)
     out = [re.sub(r"\s*\n\s*", " ", s).strip() for s in parts]
     return [s for s in out if len(s) > 30]
@@ -62,6 +70,10 @@ def get_embedder():
     except Exception:
         print("sentence-transformers не найден: используются только ключевые слова.", file=sys.stderr)
         return None
+
+@lru_cache(maxsize=1)
+def cached_embedder():
+    return get_embedder()
 
 def select_clauses(clauses, patterns, embedder, threshold=0.55):
     sims = None
@@ -88,14 +100,42 @@ def select_clauses(clauses, patterns, embedder, threshold=0.55):
                              "weight": max(p["weight"] for p in patterns if p["category"] in cats)})
     return sorted(selected, key=lambda x: -x["score"])
 
-# ---------- Decision: анализ через Claude (zero-shot) ----------
+# ---------- Decision: анализ по правилам, через Ollama или Claude ----------
 SYSTEM = ("Ты помощник по проверке договоров. Для каждого пункта оцени риск для стороны, которая "
           "собирается подписать договор. Отвечай только JSON-массивом без пояснений и без markdown. "
           "Формат элемента: {\"id\": число, \"risk\": \"none|low|medium|high\", "
           "\"issue\": \"в чём проблема, 1-2 предложения\", \"recommendation\": \"что уточнить или изменить\"}. "
           "Пиши по-русски. Не давай юридических заключений и не пиши, что договор можно подписывать.")
 
-def analyze_llm(items, batch=10):
+def parse_llm_response(raw):
+    raw = re.sub(r"^```(?:json)?|```$", "", raw.strip(), flags=re.M).strip()
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Модель вернула ответ не в формате JSON.") from exc
+    if not isinstance(parsed, list):
+        raise ValueError("Ответ модели должен быть JSON-массивом.")
+
+    results = {}
+    for item in parsed:
+        if not isinstance(item, dict):
+            raise ValueError("В ответе модели найден элемент неверного формата.")
+        risk = item.get("risk")
+        if type(item.get("id")) is not int or not isinstance(risk, str) or risk not in LEVELS:
+            raise ValueError("В ответе модели отсутствует корректный id или уровень риска.")
+        if item["id"] in results:
+            raise ValueError("В ответе модели повторяется id пункта.")
+        results[item["id"]] = {
+            "id": item["id"],
+            "risk": risk,
+            "issue": str(item.get("issue", "")),
+            "recommendation": str(item.get("recommendation", "")),
+        }
+    return results
+
+def analyze_anthropic(items, batch=10):
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        raise RuntimeError("Для режима Anthropic задайте переменную ANTHROPIC_API_KEY.")
     import anthropic
     client = anthropic.Anthropic()
     results = {}
@@ -104,14 +144,79 @@ def analyze_llm(items, batch=10):
         prompt = "Проанализируй пункты договора:\n" + json.dumps(
             [{"id": x["id"], "categories": x["categories"], "text": x["text"]} for x in chunk],
             ensure_ascii=False)
-        r = client.messages.create(model=MODEL, max_tokens=4000, system=SYSTEM,
+        r = client.messages.create(model=CLAUDE_MODEL, max_tokens=4000, system=SYSTEM,
                                    messages=[{"role": "user", "content": prompt}])
-        raw = re.sub(r"^```(?:json)?|```$", "", r.content[0].text.strip(), flags=re.M).strip()
+        text = next((block.text for block in r.content if getattr(block, "type", None) == "text"), "")
+        chunk_results = parse_llm_response(text)
+        expected_ids = {item["id"] for item in chunk}
+        if set(chunk_results) != expected_ids:
+            raise ValueError("Claude вернула неполный или лишний набор пунктов.")
+        results.update(chunk_results)
+    return results
+
+def analyze_ollama(items, batch=10):
+    results = {}
+    schema = {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer"},
+                "risk": {"type": "string", "enum": ["none", "low", "medium", "high"]},
+                "issue": {"type": "string"},
+                "recommendation": {"type": "string"},
+            },
+            "required": ["id", "risk", "issue", "recommendation"],
+        },
+    }
+    for i in range(0, len(items), batch):
+        chunk = items[i:i + batch]
+        prompt = "Проанализируй пункты договора:\n" + json.dumps(
+            [{"id": x["id"], "categories": x["categories"], "text": x["text"]} for x in chunk],
+            ensure_ascii=False)
+        payload = json.dumps({
+            "model": OLLAMA_MODEL,
+            "stream": False,
+            "format": schema,
+            "keep_alive": "5m",
+            "messages": [
+                {"role": "system", "content": SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
+            "options": {"temperature": 0},
+        }).encode("utf-8")
+        request = Request(
+            OLLAMA_URL.rstrip("/") + "/api/chat",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         try:
-            for a in json.loads(raw):
-                results[a["id"]] = a
-        except Exception:
-            print(f"Не удалось разобрать ответ для пачки {i // batch + 1}", file=sys.stderr)
+            with urlopen(request, timeout=600) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:500]
+            raise RuntimeError(f"Ошибка Ollama HTTP {exc.code}: {detail}") from exc
+        except (URLError, TimeoutError) as exc:
+            raise RuntimeError(
+                f"Не удалось подключиться к Ollama ({OLLAMA_URL}). "
+                "Запустите Ollama и убедитесь, что модель загружена."
+            ) from exc
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("Ollama вернула некорректный ответ.") from exc
+
+        if not isinstance(data, dict):
+            raise RuntimeError("Ollama вернула ответ неверного формата.")
+        message = data.get("message", {})
+        if data.get("error"):
+            raise RuntimeError(f"Ошибка Ollama: {data['error']}")
+        if not isinstance(message, dict) or not isinstance(message.get("content"), str):
+            raise RuntimeError("Ollama вернула ответ без содержимого.")
+        chunk_results = parse_llm_response(message["content"])
+        expected_ids = {item["id"] for item in chunk}
+        if set(chunk_results) != expected_ids:
+            raise ValueError("Ollama вернула неполный или лишний набор пунктов.")
+        results.update(chunk_results)
     return results
 
 def analyze_rules(items):
@@ -119,6 +224,39 @@ def analyze_rules(items):
     return {x["id"]: {"id": x["id"], "risk": lv[x["weight"]],
                       "issue": "Найдена типовая рискованная формулировка: " + ", ".join(x["categories"]) + ".",
                       "recommendation": "Проверьте условие внимательно и обсудите его с юристом."} for x in items}
+
+def analyze_document(file_path, provider="rules", top=25):
+    if top < 1:
+        raise ValueError("Параметр top должен быть не меньше 1.")
+    if provider not in {"rules", "ollama", "anthropic"}:
+        raise ValueError(f"Неизвестный LLM-провайдер: {provider}")
+
+    text = load_text(file_path)
+    clauses = split_clauses(text)
+    if not clauses:
+        raise ValueError("Не удалось выделить пункты договора.")
+
+    items = select_clauses(clauses, load_patterns(), cached_embedder())[:top]
+    if provider == "ollama":
+        analysis = analyze_ollama(items)
+        mode = f"Ollama ({OLLAMA_MODEL}) + поиск по базе паттернов"
+    elif provider == "anthropic":
+        analysis = analyze_anthropic(items)
+        mode = f"Claude ({CLAUDE_MODEL}) + поиск по базе паттернов"
+    else:
+        analysis = analyze_rules(items)
+        mode = "правила и ключевые слова, без LLM"
+
+    level, score, highs = aggregate(items, analysis)
+    return {
+        "total": len(clauses),
+        "items": items,
+        "analysis": analysis,
+        "level": level,
+        "score": score,
+        "highs": highs,
+        "mode": mode,
+    }
 
 # ---------- Aggregation ----------
 def aggregate(items, analysis):
@@ -163,25 +301,24 @@ def main():
     ap = argparse.ArgumentParser(description="Сканер договоров (не юридическая консультация)")
     ap.add_argument("file"); ap.add_argument("-o", "--output", default="report.html")
     ap.add_argument("--top", type=int, default=25, help="максимум пунктов для анализа")
-    ap.add_argument("--no-llm", action="store_true", help="только правила, без Claude")
+    ap.add_argument("--provider", choices=("rules", "ollama", "anthropic"),
+                    default=os.getenv("LLM_PROVIDER", "rules"),
+                    help="режим анализа (по умолчанию: rules)")
+    ap.add_argument("--no-llm", action="store_true", help="только правила, без LLM")
     a = ap.parse_args()
 
-    text = load_text(a.file)
-    clauses = split_clauses(text)
-    if not clauses: sys.exit("Не удалось выделить пункты договора.")
-    items = select_clauses(clauses, load_patterns(), get_embedder())[:a.top]
-
-    use_llm = not a.no_llm and os.getenv("ANTHROPIC_API_KEY")
-    if use_llm:
-        analysis = analyze_llm(items); mode = f"Claude ({MODEL}) + поиск по базе паттернов"
-    else:
-        print("Режим без LLM (нет ключа или указан --no-llm).", file=sys.stderr)
-        analysis = analyze_rules(items); mode = "правила и ключевые слова, без LLM"
-    level, score, highs = aggregate(items, analysis)
-
-    Path(a.output).write_text(build_report(Path(a.file).name, len(clauses), items, analysis, level, score, mode),
-                              encoding="utf-8")
-    print(f"Итог: {RU[level]} риск, баллы {score}, высоких рисков {highs}. Отчёт: {a.output}")
+    provider = "rules" if a.no_llm else a.provider
+    try:
+        result = analyze_document(a.file, provider=provider, top=a.top)
+        Path(a.output).write_text(
+            build_report(Path(a.file).name, result["total"], result["items"], result["analysis"],
+                         result["level"], result["score"], result["mode"]),
+            encoding="utf-8",
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        ap.exit(2, f"Ошибка: {exc}\n")
+    print(f"Итог: {RU[result['level']]} риск, баллы {result['score']}, "
+          f"высоких рисков {result['highs']}. Отчёт: {a.output}")
     print(DISCLAIMER)
 
 if __name__ == "__main__":

@@ -5,3 +5,4 @@ pdfplumber
 pytesseract
 python-docx
 sentence-transformers
+python-telegram-bot>=20,<22
