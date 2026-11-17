@@ -1,8 +1,13 @@
-anthropic
+streamlit>=1.50
+plotly>=5.20
+pandas>=2.0
 numpy
-pdf2image
 pdfplumber
-pytesseract
 python-docx
 sentence-transformers
+# optional: OCR for scanned PDFs (also needs Tesseract + Poppler system programs)
+pytesseract
+pdf2image
+# optional: LLM providers and Telegram channel
+anthropic
 python-telegram-bot>=20,<22

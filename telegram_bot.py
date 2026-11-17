@@ -11,7 +11,8 @@ from telegram import Update
 from telegram.error import TelegramError
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
-from contract_checker import DISCLAIMER, RU, analyze_document, build_report
+from cognitive.config import DISCLAIMER_RU as DISCLAIMER, RU
+from cognitive.pipeline import run_pipeline
 
 LOGGER = logging.getLogger(__name__)
 MAX_FILE_SIZE = 18 * 1024 * 1024
@@ -60,17 +61,15 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             provider,
         )
         result = await asyncio.to_thread(
-            analyze_document, input_path, provider=provider, top=TOP_CLAUSES
+            run_pipeline, input_path, provider=provider, top=TOP_CLAUSES, source_name=original_name
         )
         LOGGER.info(
             "Документ %s обработан; фактически использованный провайдер: %s",
             original_name,
-            result["mode"],
+            result.reasoning.provider_name,
         )
-        html_report = build_report(
-            original_name, result["total"], result["items"], result["analysis"],
-            result["level"], result["score"], result["mode"], result["report_metadata"],
-        )
+        html_report = result.action.report_html
+        decision = result.decision
         with tempfile.NamedTemporaryFile(
             mode="w", encoding="utf-8", suffix=".html", delete=False
         ) as tmp:
@@ -80,8 +79,8 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         safe_stem = re.sub(r"[^A-Za-z0-9А-Яа-яЁё_.-]+", "_", Path(original_name).stem).strip("._")
         safe_stem = safe_stem or "contract"
         caption = (
-            f"Итог: {RU[result['level']]} риск; баллы: {result['score']}; "
-            f"высоких рисков: {result['highs']}.\n{DISCLAIMER}"
+            f"Итог: {RU[decision.level]} риск; баллы: {decision.score}; "
+            f"высоких рисков: {decision.highs}.\n{DISCLAIMER}"
         )
         with report_path.open("rb") as report_file:
             await message.reply_document(
@@ -91,8 +90,8 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         try:
             await status_message.edit_text(
-                f"Готово: {RU[result['level']]} риск, баллы {result['score']}, "
-                f"высоких рисков {result['highs']}. Отчёт отправлен отдельным файлом."
+                f"Готово: {RU[decision.level]} риск, баллы {decision.score}, "
+                f"высоких рисков {decision.highs}. Отчёт отправлен отдельным файлом."
             )
         except TelegramError:
             LOGGER.warning("Report was sent, but the status message could not be updated")

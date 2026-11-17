@@ -1,8 +1,12 @@
-.venv/
+.venv*/
 report.html
 __pycache__/
 *.py[cod]
 *.docx
 *.pdf
 .vimtmp
+*.html
 
+# runtime memory of the cognitive system
+cognitive_memory.db
+dist/
