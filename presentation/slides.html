@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Contract Risk Advisor — Cognitive System with DSS</title>
+<style>
+  @page { size: 1280px 720px; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; color: #17222d; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .slide { width: 1280px; height: 720px; padding: 44px 56px 36px; position: relative; overflow: hidden;
+           page-break-after: always; break-after: page; display: flex; flex-direction: column; }
+  .slide:last-child { page-break-after: auto; }
+  h1 { font-size: 40px; margin: 0 0 18px; color: #0d2b45; letter-spacing: -0.5px; }
+  h1 .n { color: #1e88e5; margin-right: 10px; }
+  .body { flex: 1; display: flex; gap: 28px; min-height: 0; }
+  .col { flex: 1; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+  .shot { border: 1px solid #d5dce3; border-radius: 10px; box-shadow: 0 2px 10px rgba(13,43,69,.08); max-width: 100%; display: block; }
+  .cap { font-size: 24px; color: #3d4a57; }
+  .big { font-size: 26px; line-height: 1.35; }
+  .tag { display: inline-block; padding: 6px 14px; border-radius: 999px; font-size: 24px; font-weight: 600; margin: 4px 6px 4px 0; }
+  .footer { display: none; position: absolute; bottom: 14px; right: 56px; font-size: 16px; color: #8a96a3; }
+  .accent { color: #1e88e5; font-weight: 700; }
+  table { border-collapse: collapse; font-size: 24px; }
+  th, td { border: 1px solid #d5dce3; padding: 8px 14px; text-align: center; }
+  th { background: #f2f5f8; }
+  .formula { font-family: Consolas, monospace; font-size: 24px; background: #f2f5f8; border-radius: 8px; padding: 10px 14px; }
+  .card { border: 1px solid #d5dce3; border-radius: 12px; padding: 14px 18px; font-size: 24px; }
+  .card b { display: block; font-size: 26px; margin-bottom: 6px; color: #0d2b45; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+</style>
+</head>
+<body>
+
+<!-- 1 Title -->
+<section class="slide" style="background: linear-gradient(135deg,#0d2b45 0%,#1e4f7a 100%); color:#fff;">
+  <div style="display:flex; gap:40px; flex:1; align-items:center;">
+    <div style="flex:1;">
+      <div style="font-size:22px; letter-spacing:2px; opacity:.75;">COGNITIVE TECHNOLOGIES · FINAL PROJECT</div>
+      <div style="font-size:60px; font-weight:800; line-height:1.08; margin:18px 0;">Contract Risk Advisor</div>
+      <div style="font-size:28px; opacity:.9;">A cognitive system with a DSS:<br>what should I do with this contract?</div>
+      <div style="font-size:22px; margin-top:40px; opacity:.8;">Team: ______________________<br>2026</div>
+    </div>
+    <img src="img/01_overview.png" class="shot" style="width:620px; border:none;">
+  </div>
+</section>
+
+<!-- 2 Problem & user -->
+<section class="slide">
+  <h1><span class="n">01</span>Problem, user, decision</h1>
+  <div class="body">
+    <div class="col" style="flex:1.05;">
+      <div class="card"><b>👤 User</b>SME owner (ИП / ТОО) in Kazakhstan, no lawyer</div>
+      <div class="card"><b>⚠ Problem</b>One-sided clauses hide in long contracts</div>
+      <div class="card"><b>❓ Decision</b>
+        <span class="tag" style="background:#eceff1;">Sign as is</span>
+        <span class="tag" style="background:#e3f2fd;">Amend</span>
+        <span class="tag" style="background:#e8f5e9;">Lawyer</span>
+        <span class="tag" style="background:#ffebee;">Reject</span>
+      </div>
+    </div>
+    <div class="col" style="flex:1; justify-content:center;">
+      <div style="border-left:6px solid #c62828; background:#fff5f5; padding:18px 22px; border-radius:8px; font-size:24px; font-style:italic; color:#5d1a1a;">
+        «Неустойка 3% от общей суммы Договора за каждый день просрочки»</div>
+      <div class="cap" style="text-align:center;">↓ ≈ <b>1095% per year</b> — would you notice it on page 3?</div>
+    </div>
+  </div>
+  <div class="footer">Contract Risk Advisor</div>
+</section>
+
+<!-- 3 Architecture -->
+<section class="slide">
+  <h1><span class="n">02</span>Architecture: one cognitive cycle</h1>
+  <svg viewBox="0 0 1170 560" width="1170" height="560" style="display:block;">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#5d6b7a"/></marker>
+      <marker id="arb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1e88e5"/></marker>
+    </defs>
+    <style>
+      .b { fill:#fff; stroke:#0d2b45; stroke-width:2.5; rx:14; }
+      .t { font: 700 22px "Segoe UI"; fill:#0d2b45; text-anchor:middle; }
+      .s { font: 17px "Segoe UI"; fill:#5d6b7a; text-anchor:middle; }
+      .l { stroke:#5d6b7a; stroke-width:2.5; fill:none; marker-end:url(#ar); }
+      .d { font: italic 16px "Segoe UI"; fill:#1e88e5; text-anchor:middle; }
+    </style>
+    <!-- input -->
+    <rect x="0" y="40" width="130" height="80" rx="14" fill="#f2f5f8" stroke="#8a96a3" stroke-width="2"/>
+    <text x="65" y="76" class="t" style="font-size:20px">Contract</text><text x="65" y="100" class="s">PDF·DOCX·TXT</text>
+    <!-- row 1 -->
+    <rect x="175" y="30" width="200" height="100" class="b"/><text x="275" y="72" class="t">① Perception</text><text x="275" y="98" class="s">parse · clean · features</text>
+    <rect x="455" y="30" width="200" height="100" class="b"/><text x="555" y="72" class="t">② Attention</text><text x="555" y="98" class="s">keywords + embeddings</text>
+    <rect x="735" y="30" width="200" height="100" class="b"/><text x="835" y="72" class="t">③ Memory</text><text x="835" y="98" class="s">SQLite · cases · weights</text>
+    <!-- row 2 -->
+    <rect x="735" y="250" width="200" height="100" class="b"/><text x="835" y="292" class="t">④ Reasoning</text><text x="835" y="318" class="s">rules R1–R10 + trace</text>
+    <rect x="420" y="235" width="270" height="130" rx="14" fill="#e3f2fd" stroke="#1e88e5" stroke-width="3"/>
+    <text x="555" y="278" class="t" style="fill:#0d47a1">⑤ Decision · DSS</text><text x="555" y="306" class="s">4 alternatives × 4 criteria</text><text x="555" y="330" class="s">TOPSIS · WSM · what-if</text>
+    <rect x="175" y="250" width="200" height="100" class="b"/><text x="275" y="292" class="t">⑥ Action</text><text x="275" y="318" class="s">report · decision log</text>
+    <!-- human -->
+    <rect x="420" y="440" width="270" height="90" rx="14" fill="#fff8e1" stroke="#ef8f00" stroke-width="2.5"/>
+    <text x="555" y="478" class="t" style="fill:#8a5a00">👤 Human decides</text><text x="555" y="504" class="s">weights · final choice · feedback</text>
+    <!-- learning -->
+    <rect x="970" y="440" width="190" height="90" class="b" style="stroke:#1e88e5"/><text x="1065" y="478" class="t">⑦ Learning</text><text x="1065" y="504" class="s">weights ← feedback</text>
+    <!-- arrows -->
+    <path d="M130,80 L170,80" class="l"/>
+    <path d="M375,80 L450,80" class="l"/><text x="412" y="66" class="d">clauses</text>
+    <path d="M655,80 L730,80" class="l"/><text x="692" y="66" class="d">top-N</text>
+    <path d="M835,130 L835,245" class="l"/><text x="895" y="195" class="d">+ similar cases</text>
+    <path d="M735,300 L695,300" class="l"/><text x="713" y="286" class="d">risks</text>
+    <path d="M420,300 L380,300" class="l"/>
+    <path d="M555,365 L555,435" class="l"/><text x="610" y="405" class="d">recommendation</text>
+    <path d="M690,485 L965,485" class="l" style="stroke:#1e88e5; marker-end:url(#arb)"/><text x="828" y="472" class="d">ratings</text>
+    <path d="M1065,440 L1065,80 L940,80" class="l" style="stroke:#1e88e5; stroke-dasharray:7 6; marker-end:url(#arb)"/><text x="1052" y="260" class="d" style="text-anchor:end">updated</text><text x="1052" y="280" class="d" style="text-anchor:end">knowledge</text>
+    <path d="M275,350 L275,420" class="l"/><text x="275" y="445" class="s">HTML report ⤓</text>
+  </svg>
+  <div class="footer">each box = separate module in cognitive/ with typed input and output</div>
+</section>
+
+<!-- 4 Perception + Attention -->
+<section class="slide">
+  <h1><span class="n">03</span>Perception + Attention</h1>
+  <div class="body">
+    <div class="col">
+      <img src="img/02a_perception.png" class="shot">
+      <div class="cap"><span class="accent">Perception:</span> parse → clean → clauses → regex features: %, “per day”, ₸ / МРП, periods in days</div>
+    </div>
+    <div class="col">
+      <img src="img/03a_attention_chart.png" class="shot">
+      <div class="cap"><span class="accent">Attention:</span> keywords + multilingual embeddings → evidence-weighted score → top-N clauses</div>
+    </div>
+  </div>
+  <div class="footer">pdfplumber · python-docx · Tesseract OCR · MiniLM-L12 multilingual</div>
+</section>
+
+<!-- 5 Memory + Learning -->
+<section class="slide">
+  <h1><span class="n">04</span>Memory + Learning</h1>
+  <div class="body">
+    <div class="col" style="flex:1.6;">
+      <img src="img/07_memory_after_learning.png" class="shot">
+    </div>
+    <div class="col" style="flex:1; justify-content:center;">
+      <div class="card"><b>Memory (SQLite)</b>learned weights · rated cases · documents · decisions</div>
+      <div class="formula">w ← clip(w + 0.3·(user − system))</div>
+      <div class="big"><span class="accent">2 ratings →</span> 5 clauses changed, score 56 → 63</div>
+    </div>
+  </div>
+  <div class="footer">case-based memory (instant) + weight update (generalises to other clauses)</div>
+</section>
+
+<!-- 6 Reasoning + Decision + Action -->
+<section class="slide">
+  <h1><span class="n">05</span>Reasoning + Decision + Action</h1>
+  <div class="body">
+    <div class="col" style="flex:1.45;">
+      <img src="img/09_trace_rule.png" class="shot">
+      <img src="img/10_trace_memory.png" class="shot">
+    </div>
+    <div class="col" style="flex:1; justify-content:center;">
+      <div class="card"><b>④ Reasoning</b>10 forward-chaining rules + memory override; every step shown</div>
+      <div class="card"><b>⑤ Decision</b>system's own choice of action (TOPSIS)</div>
+      <div class="card"><b>⑥ Action</b>HTML report · decision log · Telegram bot</div>
+    </div>
+  </div>
+  <div class="footer">optional LLM (local Ollama / Claude) adds an opinion; the rule trace is kept</div>
+</section>
+
+<!-- 7 DSS -->
+<section class="slide">
+  <h1><span class="n">06</span>DSS: what to do with this contract?</h1>
+  <div class="body">
+    <div class="col" style="flex:1.25;">
+      <img src="img/05a_dss_recommendation.png" class="shot">
+      <table style="font-size:24px;">
+        <tr><th>Criterion</th><th>Type</th><th>Sign</th><th>Amend</th><th>Lawyer</th><th>Reject</th></tr>
+        <tr><td>Residual risk</td><td>cost</td><td>S</td><td>S − p·F</td><td>S·(1−e)</td><td>0</td></tr>
+        <tr><td>Cost ₸ · Delay</td><td>cost</td><td>0</td><td>c, d</td><td>L, d</td><td>0</td></tr>
+        <tr><td>Deal value ₸</td><td>benefit</td><td>V</td><td>V(1−w)</td><td>V(1−w)</td><td>0</td></tr>
+      </table>
+    </div>
+    <div class="col" style="flex:1;">
+      <img src="img/05d_dss_sensitivity.png" class="shot">
+      <div class="cap">Sliders → instant re-ranking. Leader switches at risk weight 18% / 64%.</div>
+    </div>
+  </div>
+  <div class="footer">TOPSIS (main) · WSM cross-check · Monte-Carlo robustness · the human makes the final choice</div>
+</section>
+
+<!-- 8 Results -->
+<section class="slide">
+  <h1><span class="n">07</span>Results and quality evaluation</h1>
+  <div class="body">
+    <div class="col">
+      <div class="grid2">
+        <div class="card" style="text-align:center;"><b style="font-size:44px;color:#1e88e5;">0.87</b>Precision</div>
+        <div class="card" style="text-align:center;"><b style="font-size:44px;color:#1e88e5;">0.77</b>Recall</div>
+        <div class="card" style="text-align:center;"><b style="font-size:44px;color:#1e88e5;">0.82</b>F1 (flag)</div>
+        <div class="card" style="text-align:center;"><b style="font-size:44px;color:#1e88e5;">90%</b>within 1 level</div>
+      </div>
+      <div class="cap">57 labelled clauses, 3 contracts, empty memory</div>
+    </div>
+    <div class="col">
+      <table>
+        <tr><th>Contract</th><th>Risk score</th><th>Level</th><th>DSS</th></tr>
+        <tr><td>Dangerous</td><td>56</td><td style="color:#c62828;font-weight:700">high</td><td>Lawyer</td></tr>
+        <tr><td>Medium</td><td>20</td><td style="color:#ef8f00;font-weight:700">medium</td><td>Lawyer*</td></tr>
+        <tr><td>Balanced</td><td>9</td><td style="color:#2e7d32;font-weight:700">low</td><td>Sign</td></tr>
+      </table>
+      <div class="cap">* “Amend” is a close second (0.845 vs 0.821)</div>
+      <div class="cap">Ranking dangerous &gt; medium &gt; balanced ✓ · 24 unit tests ✓</div>
+    </div>
+  </div>
+  <div class="footer">flag = medium or high · python -m cognitive.evaluation</div>
+</section>
+
+<!-- 9 Limitations, risks, ethics -->
+<section class="slide">
+  <h1><span class="n">08</span>Limitations, risks, ethics</h1>
+  <div class="body" style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+    <div class="card" style="font-size:28px;"><b style="font-size:34px;">🔍 Coverage</b>Recall 0.77 — unusual wording is missed</div>
+    <div class="card" style="font-size:28px;"><b style="font-size:34px;">🧪 Small test set</b>57 clauses, one annotator</div>
+    <div class="card" style="font-size:28px;"><b style="font-size:34px;">⚖ Bias</b>Feedback shifts weights — memory can be reset</div>
+    <div class="card" style="font-size:28px;"><b style="font-size:34px;">👤 Responsibility</b>Not legal advice — the human decides</div>
+  </div>
+</section>
+
+<!-- 10 Conclusions -->
+<section class="slide" style="background:#0d2b45; color:#fff;">
+  <h1 style="color:#fff;"><span class="n">09</span>Conclusions → live demo</h1>
+  <div class="body" style="flex-direction:column; justify-content:center; gap:34px;">
+    <div style="display:flex; align-items:center; gap:14px; font-size:28px; font-weight:600;">
+      <div style="background:#1e4f7a; padding:18px 22px; border-radius:12px;">📄 Upload</div>→
+      <div style="background:#1e4f7a; padding:18px 22px; border-radius:12px;">①–④ Cycle</div>→
+      <div style="background:#1e88e5; padding:18px 22px; border-radius:12px;">⑤ DSS + what-if</div>→
+      <div style="background:#ef8f00; padding:18px 22px; border-radius:12px;">👤 Your decision</div>→
+      <div style="background:#1e4f7a; padding:18px 22px; border-radius:12px;">⑦ Learn</div>
+    </div>
+    <div style="font-size:28px; line-height:1.5; opacity:.92;">7 separate modules, one pipeline · explainable rules · TOPSIS DSS with sensitivity · learns from feedback</div>
+    <div style="font-size:24px; opacity:.7;">streamlit run app.py</div>
+  </div>
+</section>
+
+</body>
+</html>

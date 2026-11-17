@@ -1,0 +1,58 @@
+document,clause,gold_risk,note
+contract_1_dangerous.txt,preamble,none,parties and date
+contract_1_dangerous.txt,1.1,medium,scope defined by the executor alone
+contract_1_dangerous.txt,1.2,high,deadlines at executor's discretion
+contract_1_dangerous.txt,2.1,medium,100% prepayment within 1 day
+contract_1_dangerous.txt,2.2,high,unilateral price change incl. paid services
+contract_1_dangerous.txt,2.3,high,prepayment never refunded
+contract_1_dangerous.txt,2.4,high,unlimited expenses without documents
+contract_1_dangerous.txt,3.1,high,deemed accepted when the act is sent
+contract_1_dangerous.txt,3.2,high,claims within 1 hour
+contract_1_dangerous.txt,4.1,high,penalty 3% of total per day
+contract_1_dangerous.txt,4.2,high,no liability even if at fault
+contract_1_dangerous.txt,4.3,high,liability cap 1 000 tenge
+contract_1_dangerous.txt,4.4,high,customer liable for all third-party claims
+contract_1_dangerous.txt,5.1,high,3-year auto-renewal with 12-month notice
+contract_1_dangerous.txt,5.2,high,executor may terminate at any time
+contract_1_dangerous.txt,5.3,high,customer cannot exit; penalty for remaining term
+contract_1_dangerous.txt,6.1,high,customer materials become executor property
+contract_1_dangerous.txt,6.2,high,executor may disclose personal data and secrets
+contract_1_dangerous.txt,6.3,high,10-year non-compete
+contract_1_dangerous.txt,7.1,high,unilateral amendments via website
+contract_1_dangerous.txt,7.2,medium,assignment without consent
+contract_1_dangerous.txt,7.3,medium,executor's court only; no claim procedure
+contract_1_dangerous.txt,7.4,high,waiver of the right to challenge
+contract_2_medium.txt,preamble,none,parties and date
+contract_2_medium.txt,1.1,none,subject of the contract
+contract_2_medium.txt,1.2,none,batches agreed by both parties
+contract_2_medium.txt,2.1,none,price
+contract_2_medium.txt,2.2,low,30% advance within 5 days
+contract_2_medium.txt,2.3,none,balance after delivery
+contract_2_medium.txt,2.4,medium,supplier may change price with 15 days notice
+contract_2_medium.txt,3.1,none,delivery term
+contract_2_medium.txt,3.2,low,claims within 5 working days
+contract_2_medium.txt,4.1,medium,buyer penalty 0.2% per day without cap
+contract_2_medium.txt,4.2,low,supplier penalty 0.1% per day (protects the buyer)
+contract_2_medium.txt,4.3,medium,supplier liability capped at batch value
+contract_2_medium.txt,5.1,low,1-year auto-renewal with 30 days notice
+contract_2_medium.txt,5.2,none,mutual termination with notice
+contract_2_medium.txt,6.1,medium,supplier's court
+contract_2_medium.txt,6.2,low,mutual confidentiality for 3 years
+contract_2_medium.txt,6.3,none,standard force majeure
+contract_3_balanced.txt,preamble,none,parties and date
+contract_3_balanced.txt,1.1,none,subject defined in an annex
+contract_3_balanced.txt,1.2,none,changes only by signed agreement
+contract_3_balanced.txt,2.1,none,price
+contract_3_balanced.txt,2.2,none,payment after the act
+contract_3_balanced.txt,2.3,none,price changes only by mutual consent
+contract_3_balanced.txt,3.1,none,acceptance or reasoned refusal in 5 days
+contract_3_balanced.txt,3.2,low,"defects fixed within a ""reasonable"" agreed term"
+contract_3_balanced.txt,4.1,none,mutual penalty 0.05% per day capped at 5%
+contract_3_balanced.txt,4.2,none,mutual liability for actual damage with cap
+contract_3_balanced.txt,5.1,none,1-year term
+contract_3_balanced.txt,5.2,none,mutual termination with 30 days notice
+contract_3_balanced.txt,6.1,none,mutual confidentiality for 2 years
+contract_3_balanced.txt,6.2,none,customer keeps its documents
+contract_3_balanced.txt,7.1,none,negotiation then defendant's court
+contract_3_balanced.txt,7.2,none,assignment only with consent
+contract_3_balanced.txt,7.3,none,standard force majeure
